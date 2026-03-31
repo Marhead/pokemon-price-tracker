@@ -1,44 +1,41 @@
-# Pokemon Card Price Tracker — Pre-Plan v1
+# Pokemon Card Price Tracker — Frontend Pre-Plan v1
 
 > 작성일: 2026-03-31
 > 상태: 초안 (Draft)
+> 저장소: `pokemon-price-tracker-front`
 
 ---
 
 ## 1. 프로젝트 개요
 
-포켓몬 트레이딩 카드게임 라이브(PTCGL) 카드의 국내 시세를 한눈에 비교할 수 있는 웹 서비스.
-여러 판매처의 가격 데이터를 스크래핑·집계하여 사용자가 카드 시세를 쉽게 파악하도록 돕는 것이 목표다.
+포켓몬 트레이딩 카드게임 라이브(PTCGL) 카드의 국내 시세를 한눈에 비교할 수 있는 웹 서비스의 **프론트엔드** 프로젝트.
+
+전체 시스템은 3개 저장소로 구성된다:
+
+| 저장소 | 역할 |
+|--------|------|
+| **`pokemon-price-tracker-front`** (본 저장소) | React SPA — UI, 라우팅, API 연동 |
+| `pokemon-price-tracker-backend` | Rust Axum API 서버 — 카드 메타데이터 조회 + 실시간 시세 조회 |
+| `pokemon-price-tracker-scraper` | Python 스크래퍼 — 공식 카드 DB 수집 + 판매처별 시세 수집 |
 
 ---
 
 ## 2. 기술 스택
 
-### 프론트엔드
 | 항목 | 선택 |
 |------|------|
 | 프레임워크 | React (Vite + TypeScript) |
 | 배포 | Cloudflare Pages |
 | 스타일링 | Tailwind CSS v4 + shadcn/ui |
 | UI 컴포넌트 | shadcn/ui (Radix UI 기반 headless 컴포넌트) |
-| 상태 관리 | TBD (Zustand 또는 React Query 권장) |
+| 상태 관리 | @tanstack/react-query |
+| 라우팅 | react-router-dom |
 
-#### Tailwind CSS + shadcn/ui 선택 이유
+### Tailwind CSS + shadcn/ui 선택 이유
 - **Tailwind CSS v4**: 유틸리티 퍼스트로 빠른 UI 개발, 번들 크기 최소화
 - **shadcn/ui**: 복사 붙여넣기 방식으로 컴포넌트를 프로젝트에 직접 소유 → 커스터마이징 자유도 높음
 - 카드 리스트, 검색 바, 시세 비교 테이블 등에 `Table`, `Card`, `Input`, `Select`, `Badge`, `Dialog` 등 shadcn 컴포넌트 활용
 - 다크모드 지원이 Tailwind + shadcn 조합으로 간단하게 구현 가능
-
-### 백엔드 (필요 시)
-| 항목 | 선택 |
-|------|------|
-| 언어 | Rust |
-| 웹 프레임워크 | Axum |
-| ORM | SeaORM |
-| DB | SQLite |
-
-> 백엔드 필요 여부: 스크래핑 작업 및 DB 조회 API가 필요하므로 Rust-Axum-SeaORM 서버 개발이 필요하다.
-> Cloudflare Pages의 Functions(Workers)로 일부 API를 처리할 수도 있으나, 무거운 스크래핑 로직은 별도 Rust 서버에서 담당한다.
 
 ---
 
@@ -53,136 +50,34 @@
 
 ---
 
-## 4. 데이터 수집 (스크래핑)
+## 4. 백엔드 API 연동
 
-### 4-1. 카드 DB 원천: 한국 포켓몬 카드게임 공식 사이트
+> 백엔드 API 상세는 `pokemon-price-tracker-backend` 저장소의 문서를 참조한다.
 
-- URL: `https://pokemoncard.co.kr/main` (카드 검색 데이터베이스)
-- 수집 항목 (예시): 카드명, 카드 번호, 확장팩, 희귀도, 타입, 이미지 URL 등
-- 저장소: **SQLite**
-- 스크래핑 주기: TBD (초기에는 수동 또는 1일 1회 배치 권장)
+### 사용하는 API 엔드포인트
 
-### 4-2. 시세 비교 대상 판매처 (실시간 스크래핑)
+| Method | Path | 설명 |
+|--------|------|------|
+| `GET` | `/api/cards` | 카드 목록 (페이지네이션, 검색·필터 지원) |
+| `GET` | `/api/cards/:id` | 카드 단건 조회 |
+| `GET` | `/api/cards/:id/prices` | 카드 실시간 시세 조회 (모든 판매처) |
+| `GET` | `/api/expansions` | 확장팩 목록 |
 
-> 시세 데이터는 **보존하지 않는다**. 사용자가 페이지를 열 때 실시간으로 각 판매처에서 직접 가져온다.
-> 히스토리 기능은 현재 범위 밖이며, SQLite에는 카드 메타데이터(공식 DB)만 저장한다.
+### Query 파라미터 (`GET /api/cards`)
 
-#### 1차 대상 (스크래핑 용이, 높은 활용도)
-
-| 판매처 | URL | 제공 데이터 | 렌더링 방식 | 난이도 |
-|--------|-----|------------|------------|--------|
-| 카드냥 (역삼) | `https://cardnyang.com/?mode=buying` | 카드코드, 매입가 | 정적 HTML | 쉬움 |
-| 카드냥 (역삼) | `https://cardnyang.com/?mode=buying2` | 카드코드, 매입가 (2번째 목록) | 정적 HTML | 쉬움 |
-| ICU (너정다) | `https://icu.gg/trade/card_list` | 시세 그래프, 평균가, 거래 내역 | JS 렌더링 | 어려움 |
-| 당근마켓 | `https://www.daangn.com/search/포켓몬카드` | 상품명, 가격, 판매자, 지역 | 정적 JSON-LD | 쉬움 |
-| 중고나라 | `https://web.joongna.com/search/포켓몬카드` | 상품명, 가격, 날짜 | SSR + JSON | 보통 |
-
-#### 2차 대상 (추가 고려)
-
-| 판매처 | URL | 비고 |
-|--------|-----|------|
-| 트레이너스 (범계) | `https://trainers.kr/` | 매입가 없음, 판매가만. Cafe24 기반 동적 로딩 |
-| 번개장터 | `https://m.bunjang.co.kr/search/products?q=포켓몬카드` | 완전 CSR, Playwright 필요 |
-| 카드몬스터 | `https://pokemon.cardmon.com/` | 카드 DB + 시세 정보 |
-
-#### 트레이너스 (범계) 데이터 구조 (직접 조사 완료)
-- URL: `https://trainers.kr/`
-- 플랫폼: Cafe24 기반 이커머스 쇼핑몰
-- 위치: 경기도 안양시 동안구 평촌대로 217번길 15, 3층 (범계역 근처)
-- 렌더링: 동적 로딩 (Cafe24 특성상 상품 데이터 JS로 로드)
-- 제공 데이터: **판매가만** (매입가 없음), 박스/팩 제품 위주 (싱글 카드 비중 낮음)
-- 결론: 싱글 카드 매입가 추적 목적에는 적합하지 않음 → **2차 검토 대상 유지**
-
-> **트레이너스**: 당초 1차 대상이었으나 사이트 조사 결과 매입가 없이 판매 전용 쇼핑몰로 확인.
-> 박스/팩 위주라 싱글 카드 시세 추적 목적으로는 활용도가 낮음.
->
-> **tcg999**: 네이버 스마트스토어가 아닌 G마켓 미니샵(`m.gmarket.co.kr/n/minishop/tcg999`) 운영.
-> G마켓이 403 차단을 적용하고 있어 스크래핑 어려움. 2차 검토 대상.
-
-#### 카드냥 데이터 구조 (직접 조사 완료)
-- 매입 리스트 URL: `https://cardnyang.com/?mode=buying`, `?mode=buying2`
-- 형식: 정적 HTML, `requests` + `BeautifulSoup`으로 바로 파싱 가능
-- 카드 이미지: `https://mtg-kr.com/cardimage/poketcg[카드코드].png` 패턴
-- 제공 데이터: 카드코드(예: `SV1a-066`), 매입가(₩100 ~ ₩210,000), 카드 이미지 URL
-- 운영 기간 표기 있음 (예: 2026/03/24 ~ 별도 공지 시 종료) → 수집 시 유효 기간 확인 필요
-
-- 각 판매처 별 수집 항목: 카드명/코드, 판매가, 매입가(있는 경우), 수집 시각
-- 가격 비교 시 동일 카드의 최신 가격 기준으로 최저가·최고가를 노출한다.
+| 파라미터 | 타입 | 설명 |
+|----------|------|------|
+| `q` | string | 카드명 검색 |
+| `expansion` | string | 확장팩 필터 |
+| `rarity` | string | 희귀도 필터 |
+| `page` | int | 페이지 번호 (기본값: 1) |
+| `per_page` | int | 페이지당 건수 (기본값: 40) |
 
 ---
 
-## 5. AI 활용 데이터 스크래핑 및 파싱
+## 5. 화면 구성
 
-> 초기 데이터 수집 단계에서 Claude Code(AI)가 직접 스크래핑·파싱 작업을 수행한다.
-> 사이트 구조 분석부터 SQLite 저장까지 AI가 주도하고, 사람은 검수·승인 역할을 맡는다.
-
-### 5-1. AI 스크래핑 작업 범위
-
-| 작업 | 담당 | 비고 |
-|------|------|------|
-| 공식 사이트 HTML 구조 분석 | Claude Code | 카드 목록·상세 페이지 DOM 파악 |
-| 카드 DB 스크래퍼 코드 작성 | Claude Code | Python(`httpx` + `BeautifulSoup`) 또는 Rust |
-| 파싱 결과 정규화 로직 작성 | Claude Code | 카드명 표기 통일, 희귀도 코드 매핑 등 |
-| SQLite 스키마 설계 및 마이그레이션 | Claude Code | SeaORM 엔티티 정의 포함 |
-| 시세 판매처별 스크래퍼 작성 | Claude Code | 카드냥, ICU, 당근마켓, 중고나라 각각 |
-| 스크래핑 결과 검수 | 사람 | 누락·오파싱 여부 확인 |
-
-### 5-2. AI 스크래핑 워크플로우
-
-```
-1. [Claude Code] 대상 URL 접속 → HTML 원문 수집 (WebFetch 도구 활용)
-2. [Claude Code] DOM 구조 분석 → 카드 데이터 위치 파악
-3. [Claude Code] 파서 코드 작성 (Python 또는 Rust)
-4. [Claude Code] 파싱 결과를 JSON으로 출력 → 사람이 샘플 검수
-5. [Claude Code] SQLite 스키마 생성 + INSERT 스크립트 실행
-6. [사람] 데이터 검수 후 승인 → 다음 판매처로 반복
-```
-
-### 5-3. AI 파싱 전략 (판매처별)
-
-#### 공식 카드 DB (`pokemoncard.co.kr`)
-- 페이지네이션이 있는 카드 목록 페이지를 순차적으로 순회
-- 카드 상세 페이지에서 이미지 URL, 카드 번호, 확장팩, 희귀도 등 추출
-- JavaScript 렌더링이 필요한 경우: Playwright 기반 Headless Browser 스크립트 작성
-
-#### 카드냥 (`https://cardnyang.com/?mode=buying`)
-- **정적 HTML** → `httpx` + `BeautifulSoup` 단순 파싱으로 충분
-- 카드코드(SV1a-066 형식)를 공식 DB 카드 번호와 매핑하는 로직 필요
-- `mode=buying`, `mode=buying2` 두 페이지 모두 순회
-
-#### ICU 너정다 (`https://icu.gg/trade/card_list`)
-- **JS 렌더링** → Playwright 기반 Headless Browser 필요
-- 시세 그래프 및 거래 내역 데이터 풍부 → 우선순위 높음
-- 로그인 없이 접근 가능한 범위 내에서 파싱
-
-#### 당근마켓 (`https://www.daangn.com/search/포켓몬카드`)
-- **정적 JSON-LD 구조화 데이터** → `requests` 파싱만으로 가능
-- 상품명에서 카드명·확장팩·희귀도 추출하는 정규식/LLM 파싱 로직 작성
-- 중고 거래가 특성상 상태(미개봉/사용감 등) 정보도 함께 수집
-
-#### 중고나라 (`https://web.joongna.com/search/포켓몬카드`)
-- **Next.js SSR** → 초기 HTML에 JSON 데이터 포함, 파싱 가능
-- 상품명, 가격, 날짜, 채팅수 수집
-
-### 5-4. 카드명 정규화 (AI 담당)
-
-판매처마다 카드명 표기가 다를 수 있다.
-
-| 원본 표기 예시 | 정규화 결과 |
-|----------------|-------------|
-| `리자몽ex (풀아트)` | `리자몽 ex` + 희귀도: `SAR` |
-| `리자몽EX 풀아트` | `리자몽 ex` + 희귀도: `SAR` |
-| `이부이 VMAX` | `이브이 VMAX` (오타 교정 포함) |
-
-- Claude Code가 초기 정규화 규칙 초안을 작성
-- 매핑 테이블을 SQLite의 `card_aliases` 테이블로 관리
-- 신규 미매핑 카드 발견 시 알림 로그 출력
-
----
-
-## 6. 화면 구성
-
-### 6-1. 공통 레이아웃
+### 5-1. 공통 레이아웃
 
 ```
 [ 헤더: 로고 + 카드 검색 바 ]
@@ -190,17 +85,17 @@
 [ 푸터 ]
 ```
 
-### 6-2. 메인 페이지 (`/`)
+### 5-2. 메인 페이지 (`/`)
 
 - **상단**: 카드 검색 바 (카드명, 확장팩, 희귀도 필터 등)
 - **본문**: 전체 카드 리스트
   - 카드 썸네일 이미지
   - 카드명 / 확장팩 / 희귀도
-  - 판매처별 최신 시세 요약 (카드냥 / 트레이너스 / tcg999)
+  - 판매처별 최신 시세 요약
   - 최저가 강조 표시
 - **페이지네이션 또는 무한 스크롤**: TBD
 
-### 6-3. 카드 상세 페이지 (`/card/:id`)
+### 5-3. 카드 상세 페이지 (`/card/:id`)
 
 - 카드 이미지 (대형)
 - 카드 기본 정보 (공식 DB 데이터)
@@ -209,7 +104,7 @@
 - **시세 히스토리 없음** — 실시간 조회만 제공
 - 로딩 중에는 Skeleton UI 표시 (shadcn `Skeleton` 컴포넌트 활용)
 
-### 6-4. 준비 중 페이지 (비한국어 접속)
+### 5-4. 준비 중 페이지 (비한국어 접속)
 
 - 간단한 "서비스 준비 중" 메시지
 - 영문/기타 언어 안내 문구
@@ -217,7 +112,7 @@
 
 ---
 
-## 7. 아키텍처 다이어그램 (개요)
+## 6. 아키텍처 다이어그램 (프론트엔드 관점)
 
 ```
 [브라우저]
@@ -228,60 +123,44 @@
     |
     | API 호출 (REST)
     v
-[Rust Axum 서버]
+[Rust Axum 서버]  ← pokemon-price-tracker-backend
     |
-    |-- [카드 메타데이터 조회] SeaORM → SQLite (공식 DB 데이터, 사전 적재)
-    |
-    |-- [실시간 시세 조회] 요청 시마다 외부 사이트 스크래핑 후 즉시 반환
-    |       |-- cardnyang.com/?mode=buying   → 카드코드, 매입가
-    |       |-- icu.gg/trade/card_list       → 평균가, 거래 내역 (Playwright)
-    |       |-- daangn.com/search/포켓몬카드 → 중고 판매가 (JSON-LD)
-    |       |-- web.joongna.com/search/...   → 중고 판매가 (SSR JSON)
-    |
-    v
-[SQLite DB]  ← 카드 메타데이터만 저장 (시세 데이터 비저장)
-    |
-[초기 1회 적재 스크래퍼 — Claude Code 주도]
-    |-- pokemoncard.co.kr  → 카드명, 번호, 확장팩, 희귀도, 이미지 URL
+    |-- /api/cards         → 카드 메타데이터
+    |-- /api/cards/:id     → 카드 상세
+    |-- /api/cards/:id/prices → 실시간 시세 (판매처별)
+    |-- /api/expansions    → 확장팩 목록
 ```
 
 ---
 
-## 8. 주요 고려사항 및 리스크
+## 7. 주요 고려사항 및 리스크
 
 | 항목 | 내용 |
 |------|------|
-| 스크래핑 법적 이슈 | 각 사이트의 robots.txt 및 이용약관 확인 필요. 과도한 요청은 IP 차단 위험. |
-| 데이터 정합성 | 카드명 표기 차이로 인한 매핑 실패 가능성 → 정규화 로직 필요 |
-| SQLite 동시성 | 스크래퍼와 API 서버가 동시 접근 시 WAL 모드 활성화 필요 |
 | Cloudflare Pages 제한 | 서버사이드 로직은 Workers/Functions로 처리 가능하나 실행 시간 제한(CPU 10ms~30s) 주의 |
 | 언어 감지 신뢰도 | `navigator.language` 조작 가능성 → 서비스 초기에는 클라이언트 감지로 충분 |
+| 시세 로딩 UX | 실시간 스크래핑 특성상 응답 지연 가능 → Skeleton UI + 부분 실패 처리 필수 |
 
 ---
 
-## 9. 개발 단계 (로드맵 초안)
+## 8. 개발 단계 (프론트엔드 로드맵)
 
 | 단계 | 내용 |
 |------|------|
 | Phase 1 | Vite+React+TS 프로젝트 세팅, Cloudflare Pages 배포 파이프라인 구성 |
 | Phase 2 | 언어 분기 페이지 구현 (한국어 / 준비 중) |
-| Phase 3 | **[AI]** 공식 사이트 DOM 분석 → 카드 DB 스크래퍼 작성 → SQLite 적재 + 사람 검수 |
-| Phase 4 | **[AI]** 시세 판매처(카드냥·ICU·당근마켓·중고나라) 실시간 스크래퍼 작성 → 카드코드 정규화 매핑 |
-| Phase 5 | Rust Axum API 서버 구축 (카드 목록/상세 조회 + 실시간 시세 조회 API) |
-| Phase 6 | 메인 페이지 UI 구현 (카드 리스트 + 검색 + 시세 비교) |
-| Phase 7 | 카드 상세 페이지 UI 구현 (실시간 시세 fetch + Skeleton UI) |
-| Phase 8 | 2차 판매처 추가 (트레이너스, 번개장터 등) 및 고도화 |
+| Phase 3 | React Query 설정 + API 연동 훅 작성 |
+| Phase 4 | 메인 페이지 UI 구현 (카드 리스트 + 검색 + 시세 비교) |
+| Phase 5 | 카드 상세 페이지 UI 구현 (실시간 시세 fetch + Skeleton UI) |
+| Phase 6 | 성능 개선 (이미지 lazy loading, 반응형 레이아웃, 에러 UX) |
 
 ---
 
-## 10. 미결 사항 (TBD)
+## 9. 미결 사항 (TBD)
 
-- [ ] ICU(너정다) Playwright 스크래핑 시 로그인 요구 범위 확인
-- [ ] 실시간 시세 조회 응답 지연 대응 전략 (타임아웃, 부분 실패 처리)
-- [ ] 당근마켓/중고나라 상품명에서 카드 정보 추출 정확도 검증
 - [ ] 다국어 확장(일본, 영미권) 시점 및 범위
-- [ ] Cloudflare Workers vs. 별도 Rust 서버 호스팅 방식 최종 결정
-- [ ] Playwright 서버 운영 방식 (Docker 컨테이너 별도 구성 여부)
+- [ ] 페이지네이션 vs 무한 스크롤 결정
+- [ ] 실시간 시세 조회 응답 지연 대응 UX (타임아웃, 부분 실패 표시 방식)
 
 ### 확정된 사항 (미결에서 해소)
 
@@ -289,7 +168,4 @@
 |------|------|
 | 시세 히스토리 | **미보존** — 실시간 스크래핑으로 즉시 반환 |
 | 로그인/회원 기능 | **없음** (현재 범위 밖) |
-| 카드냥 URL | `cardnyang.com/?mode=buying`, `?mode=buying2` (직접 확인 완료) |
-| 트레이너스 역할 | 매입가 없음 확인 → 1차 대상에서 제외, 2차 검토 |
-| tcg999 플랫폼 | G마켓 미니샵 운영, 403 차단으로 1차 제외 |
-| 추가 사이트 | ICU(너정다), 당근마켓, 중고나라, 카드몬스터 발굴 완료 |
+| 상태 관리 | @tanstack/react-query 채택 |
