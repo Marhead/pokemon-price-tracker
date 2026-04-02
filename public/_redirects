@@ -1,1 +1,2 @@
-/* / 200
+# SPA routing handled by 404.html (Cloudflare Pages native behavior)
+# See docs/cloudflare-deploy/adr-001-redirects-fix.md
