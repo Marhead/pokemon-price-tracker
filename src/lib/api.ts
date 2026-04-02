@@ -1,7 +1,7 @@
 import type { Card, CardListResponse, CardSearchParams } from '../types/card'
 import type { PricesResponse } from '../types/price'
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000'
+const API_BASE = import.meta.env.VITE_API_URL ?? ''
 
 export async function fetchCards(params: CardSearchParams): Promise<CardListResponse> {
   const searchParams = new URLSearchParams()
